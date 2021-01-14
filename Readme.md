@@ -15,20 +15,9 @@ Used as a project for the Operating Systems course (Computer Science course at t
 
 ## How to use
 
-1. Open terminal and clone this repository.
-```Git Clone.```
-
-2. Compile.
-
-```
-    Make clean.
-```
-
-3. Run the program.
-
-```
-    ./smallsh
-```
+1. Open terminal and clone this repository with ```Git Clone```.
+2. Compile with ```Make clean```.
+3. Run the program with ```./smallsh```.
 
 ## Demo
 
