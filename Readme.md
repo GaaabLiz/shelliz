@@ -1,6 +1,6 @@
 # SHELLIZ
 
-![Shelliz Logo](/Esame%202021/Progetto%20Shell/shelliz/logo.png)
+![Shelliz Logo](/assets/logo.png)
 
 ## Description
 
