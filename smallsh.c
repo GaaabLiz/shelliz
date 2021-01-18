@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
@@ -177,13 +178,31 @@ void runcommand(char **cline, processtype pt){
         execvp(*cline,cline);
         perror(*cline);
         exit(EXIT_FAILURE);
-    }else {
+    }else { /* processo padre */
         if(pt == PROCESS_BACKGROUND) {
-            printf("[RUNCOMMAND]: Process %s open on background with pid %d.\n", *cline, (int)pid);
+            printf("[RUNCOMMAND]: Process %s open on background with pid %d.\n", *cline, (int)pid);        
         }else {
             printf("[RUNCOMMAND]: Process %s open on foreground with pid %d.\n", *cline, (int)pid);
+            
+            /* Quando il processo è in foreground, l'interprete deve
+            ignorare il segnale di interruzzione. */
+            struct sigaction sa;
+            sa.sa_handler = ignoreSigint;
+            sigemptyset(&sa.sa_mask);
+            sa.sa_flags = 0;
+            sigaction(SIGINT,&sa,NULL);
+
+            /* Aspetta il figlio appena creato */
             pid = waitpid(pid, &exitstat, 0);
         }
+
+        /* Ripristino il funzionamento del segnale di interruzzione, in quanto
+        è possibile, come nel caso del foregound, che è stato ridefinito. */
+        struct sigaction sa;
+        sa.sa_handler = SIG_DFL;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        sigaction(SIGINT,&sa,NULL);
     }
 
     //if (ret == -1) perror("wait");
@@ -197,4 +216,9 @@ void printArgArray(char* array[], int narg) {
     printf("%s", array[i]);
     printf("'\n");
   }
+}
+
+
+void ignoreSigint(int sig) {
+    printf(" Received signal %d (SIGINT). Ignoring...\n", sig);
 }

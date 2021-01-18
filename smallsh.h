@@ -6,7 +6,7 @@
 * Costante usata per abilitare la stampa di tutto il codice usato per debuggare.
 * 0 -> nascondi tutte le stampe;
 * 1 -> mostra tutte le stampe. */
-#define DBG 1
+#define DBG 0
 
 
 /* ■
@@ -144,3 +144,12 @@ void printArgArray(char* array[], int narg);
  * @param pt Il tipo di processo da far partire
  */
 void runcommand(char **cline, processtype pt);	
+
+/**
+ * @brief Funzione che sovrascrive il comportamento del
+ * segnale di interruzzione SIGINT nel caso la shell lanci
+ * un processo in foreground.
+ * 
+ * @param sig Intero che rappresenta il segnale.
+ */
+void ignoreSigint(int sig);
