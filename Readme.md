@@ -17,6 +17,7 @@ Used as a project for the Operating Systems course (Computer Science course at t
 
 - Background command launch with **&** at the end of the line.
 - Enviroment variable in shell prompt.
+- Shell will ingnore SIGINT signals when a foreground process is running.
 
 ## How to use
 
