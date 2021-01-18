@@ -12,6 +12,9 @@ delle variabili d'ambiente dell'utente. Viene inizialmente settata a null
 in quanto verrà poi allocata nel main la memoria necessaria. */
 char *prompt = NULL;
 
+/* Tipologia del processo da eseguire in runcommand */
+processtype pt;
+
 
 /**
  * @brief Main del programma. 
@@ -34,13 +37,19 @@ int main() {
         if(DBG) printf("[MAIN]: Prompt set to '%s'.\n", prompt);
     }
 
+    /* Definzione del ciclo infinito che gestisce la shell. Finche non viene
+    rilevato un EOF oppure un segnale di terminazione viene continuamente 
+    chiesto all'utente di inserire nuove linee di comando tramite la 
+    funzione userin. Se tutto va bene, la funzione procline processa quello 
+    che ha scritto l'utente. */
+    while(userin(prompt) != EOF) procline();
     
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 
 
-/** ■ **/
+
 int loadEnv(char * prompt) {
     int returnStatus = -1;          // Valore di ritorno
     int symbolAuxLenght = 3;        // Numero di simboli ausiliari ('%', ':')
@@ -84,4 +93,108 @@ int loadEnv(char * prompt) {
     
     return returnStatus;
     
+}
+
+
+
+void procline(void){
+
+    /* Dichiarazioni di alcune variabili */
+    char *arg[MAXARG+1];    /* array di puntatori per runcommand */
+    int toktype;  	        /* tipo del simbolo nel comando */
+    int narg;		        /* numero di argomenti attuali */
+
+    /* Inizializzo il numero di argomenti 0 a zero perchè siamo all'inizio
+    del processamento della riga attuale. */
+    narg=0;
+
+    /* Ciclo che processa ogni singolo argomento da passare a runcommand */
+    do {
+
+        /* Chiamare la funzione gettok che mette un simbolo in arg[narg].
+        Una volta inserito il simbolo in arg, si esegue un'azione a seconda 
+        del tipo di simbolo inserito. */
+        switch (toktype = gettok(&arg[narg])) {
+            
+            /* Se argomento: passa al prossimo simbolo, vuoldire che l'intero argomento è già
+            presente in arg, ora devo incrementare narg perchè potrebbero esserci altri argomenti.
+            (ovviamente se narg < MAXARG) */
+            case ARG:
+            if(DBG)printf("[PROCLINE]: gettok has retuned ARG; increasing narg...\n");
+            if (narg < MAXARG) narg++;
+            break;
+            
+            /* se fine riga, ';' o '&', esegue il comando ora contenuto in arg,mettendo NULL 
+            per indicare la fine degli argomenti che servono a execvp */
+            case EOL:
+            case SEMICOLON:
+            case AMPERSAND:
+
+            /* Calcolo tipo di processo */
+            pt = (toktype == AMPERSAND) ? PROCESS_BACKGROUND : PROCESS_FOREGROUND;
+            if(DBG) printf("[PROCLINE]: Current process type is '%s'.\n", (toktype == AMPERSAND) ? "Background" : "Foreground");
+
+            /* Controllo argomenti ed eseguo comando */
+            if (narg != 0) {
+                arg[narg] = NULL;
+                if(DBG) printArgArray(arg, narg);
+                runcommand(arg, pt);
+            }else {
+                //fprintf(stderr, "Some error occurred with the number of argument to pass at exec.");
+            }
+            
+            /* Se fine riga (toktype = EOF) si esce dal ciclo e la procline è terminata.
+            Altrimenti (toktype = & || toktype = ;) bisogna ricominciare a 
+            riempire arg dall'indice 0 */
+            if (toktype != EOL) {
+                if(DBG) printf("[PROCLINE]: Toktype is SEMICOLON or AMPERSAND, so i need to reset narg.\n");
+                narg = 0;
+            } else {
+                if(DBG) printf("[PROCLINE]: Toktype is EOF. Processing of current input string is over.\n");
+            } 
+            break;
+        }
+    } while (toktype != EOL);  /* fine riga, procline finita */
+
+}
+
+
+void runcommand(char **cline, processtype pt){
+    pid_t pid;      // pid del processo
+    int exitstat;   // status di uscita della wait
+    //int ret;      // valore di ritorno della wait
+
+    pid = fork();
+    if (pid == (pid_t) -1) {
+        perror("smallsh: fork failed");
+        return;
+    }
+
+    /* processo figlio */
+    if (pid == (pid_t) 0) { 	
+        /* esegue il comando il cui nome e' il primo elemento di cline,passando 
+        cline come vettore di argomenti */
+        execvp(*cline,cline);
+        perror(*cline);
+        exit(EXIT_FAILURE);
+    }else {
+        if(pt == PROCESS_BACKGROUND) {
+            printf("[RUNCOMMAND]: Process %s open on background with pid %d.\n", *cline, (int)pid);
+        }else {
+            printf("[RUNCOMMAND]: Process %s open on foreground with pid %d.\n", *cline, (int)pid);
+            pid = waitpid(pid, &exitstat, 0);
+        }
+    }
+
+    //if (ret == -1) perror("wait");
+}
+
+
+void printArgArray(char* array[], int narg) {
+  for (int i = 0; i <= narg; i++){
+    printf("Arg[%d] = ", i);
+    printf("'");
+    printf("%s", array[i]);
+    printf("'\n");
+  }
 }

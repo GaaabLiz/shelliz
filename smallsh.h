@@ -31,6 +31,25 @@
 
 
 /* ■
+* Definizione della lunghezza massima della riga di input. */
+#define MAXBUF 512
+
+
+/* ■
+* Definizione del numero massimo di argomenti all'interno del comando */
+#define MAXARG 512
+
+
+/* ■
+* Definizione della variabile 'processtype' usata per distinguere la
+* tipologia di processo che la runcommand dovrà chiamare. */
+typedef int processtype;
+#define PROCESS_FOREGROUND 1
+#define PROCESS_BACKGROUND -1
+
+
+
+/* ■
 * Definizioni di tutte le funzioni usate nel programma. */
 
 /**
@@ -47,3 +66,81 @@
 * ciò che c'è in DEFAULT_PROMPT.
 */
 int loadEnv(char* prompt);
+
+/**
+ * @brief Stampa il prompt e legge l'intera riga carattere per carattere
+ * inserendola in un buffer fino a trovare un EOF. 
+ * 
+ * @param p Il prompt da stampare all' inizio della riga da leggere.
+ * @return int Ritorna EOF se viene rilevato, oppure restituisce il numero 
+ * di caratteri letti e inseriti nel buffer. Notare che se ritorna EOF il
+ * programma termina.
+ */
+int userin(char *p);
+
+/**
+ * @brief Stampa l'intero contenuto di inputbuf. Usato solo per scopi
+ * di debug.
+ * 
+ * @param inputbuf L'array di char contenente la stringa digitata dall'utente.
+ * @param dim La dimensione dell'array.
+ */
+void printInputbuf(char* inputbuf, int dim);
+
+/**
+ * @brief Processa un intera riga di input digitata dall'utente.
+ * Questa funzione si occupa del riconoscimento e della gestione dei vari token
+ * contenuti in inputbuf. Una volta gestiti tutti tramite gettok si passa
+ * a runcommand tutte le informazioni necessarie per avviare il processo.
+ */
+void procline();
+
+/**
+ * @brief Legge un intero simbolo e lo inserisce in tokbuf (e quindi nel
+ * vettore da passare alla runcommand). 
+ * 
+ * @param outptr L'array di stringhe da passare alla runcommand. 
+ * @return int Il tipo del simbolo trovato e inserito nel buffer/arg.
+ */
+int gettok(char **outptr);	
+
+/**
+ * @brief Verifica se C è un carattere speciale (contenuto nell'array 
+ * di caratteri speciali dichiarati all'inzio).
+ * 
+ * @param c Il carattere da controllare
+ * @return int Ritorna 0 se è speciale (quindi c è uno dei caratteri
+ * contenuti nell'array special), altrimenti ritorna 1.
+ */
+int inarg(char c);
+
+/**
+ * @brief Funzione usata solo per scopi di debug.
+ * Converte un simbolo sottoforma di intero in char*
+ * 
+ * @param type int Valore intero che rappresenta il tipo
+ * @return char* valore stringa che rappresenta il tipo
+ */
+char * convertTypeToString(int type);
+
+/**
+ * @brief Funzione usata solo per scopi di debug.
+ * 
+ * @param array il vettore degli argomenti da passare alla exec.
+ * @param narg Il numero di argomenti presenti nel vettore.
+ */
+void printArgArray(char* array[], int narg);
+
+/**
+ * @brief Crea un nuovo processo passando alla exec il vettore di
+ * argomenti creato con gettok. Notare che il comportamento sarà
+ * diverso a secondo del tipo di processo: se sarà un processo 
+ * aperto in foreground la shell aspetterà la terminazione del
+ * processo lanciato tramite la wait. Se il processo è di tipo
+ * background, verrà lanciato e non aspettato, quindi la shell
+ * proseguirà a chiedere una nuova riga.
+ * 
+ * @param cline il vettore di argomenti da passare alla exec
+ * @param pt Il tipo di processo da far partire
+ */
+void runcommand(char **cline, processtype pt);	
