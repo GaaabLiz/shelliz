@@ -163,7 +163,7 @@ void procline(void){
 void runcommand(char **cline, processtype pt){
     pid_t pid;      // pid del processo
     int exitstat;   // status di uscita della wait
-    //int ret;      // valore di ritorno della wait
+    int ret;        // valore di ritorno della wait
 
     pid = fork();
     if (pid == (pid_t) -1) {
@@ -171,30 +171,52 @@ void runcommand(char **cline, processtype pt){
         return;
     }
 
-    /* processo figlio */
-    if (pid == (pid_t) 0) { 	
+    /* Processo figlio */
+    if (pid == (pid_t) 0) { 
+        
         /* esegue il comando il cui nome e' il primo elemento di cline,passando 
         cline come vettore di argomenti */
         execvp(*cline,cline);
         perror(*cline);
         exit(EXIT_FAILURE);
-    }else { /* processo padre */
-        if(pt == PROCESS_BACKGROUND) {
-            printf("[RUNCOMMAND]: Process %s open on background with pid %d.\n", *cline, (int)pid);        
-        }else {
-            printf("[RUNCOMMAND]: Process %s open on foreground with pid %d.\n", *cline, (int)pid);
-            
+
+    }
+    /* Processo padre */
+    else { 
+
+        /* Controlla la terminazione di tutti i processi in background e li segnala */
+        checkbackgroundChild();
+        
+        /* Il base al tipo di processo avviato eseguo una determinata azione */
+        switch (pt){
+
+        case PROCESS_BACKGROUND:
+            printf("Process '%s' open on background with pid %d.\n", *cline, (int)pid);
+            break;
+
+        case PROCESS_FOREGROUND:
+            printf("Process '%s' open on foreground with pid %d.\n", *cline, (int)pid);
+
             /* Quando il processo è in foreground, l'interprete deve
             ignorare il segnale di interruzzione. */
-            struct sigaction sa;
-            sa.sa_handler = ignoreSigint;
-            sigemptyset(&sa.sa_mask);
-            sa.sa_flags = 0;
-            sigaction(SIGINT,&sa,NULL);
+            struct sigaction saf;
+            saf.sa_handler = receiveSignal;
+            sigemptyset(&saf.sa_mask);
+            saf.sa_flags = 0;
+            sigaction(SIGINT,&saf,NULL);
 
-            /* Aspetta il figlio appena creato */
-            pid = waitpid(pid, &exitstat, 0);
+            /* Aspetta il figlio appena creato e stampa info sulla terminazione*/
+            ret = waitpid(pid, &exitstat, 0);
+            if(DBG) printf("[RUNCOMMAND]: foreground process terminated with returned value = %d\n", ret);
+            if (ret == -1) perror("waitpid");
+            checkForegroundStatus(exitstat);
+            break;
+        
+        default:
+            fprintf(stderr, "Some error occurred while checking process type.\n");
+            break;
         }
+
 
         /* Ripristino il funzionamento del segnale di interruzzione, in quanto
         è possibile, come nel caso del foregound, che è stato ridefinito. */
@@ -205,7 +227,37 @@ void runcommand(char **cline, processtype pt){
         sigaction(SIGINT,&sa,NULL);
     }
 
-    //if (ret == -1) perror("wait");
+}
+
+
+void checkForegroundStatus(int wstatus) {
+    if(WIFEXITED(wstatus)) {
+        printf("Exit value: %d\n", WEXITSTATUS(wstatus));
+    } else if (WIFSIGNALED(wstatus)){
+        printf("Interrupted by signal: %d\n", WTERMSIG(wstatus));
+    }
+}
+
+
+void checkbackgroundChild() {
+    int pid;
+    int status;
+
+    /* Questo ciclo controlla se ci sono processi che sono terminati in
+    background. Se non ci sono processi che sono usciti trami con il
+    flag WNOHANG presente, la waitpid ritorna subito. Se ce un processo terminato
+    si cattura e la funziona ritorna il suo pid. */
+    do{
+        pid = waitpid(-1, &status, WNOHANG);
+        if(pid > 0) { /* necessario per capire se pid o altro */
+            if(WIFEXITED(status)) {
+                printf("Background process with pid %d terminated with exit value %d.\n", pid, WEXITSTATUS(status));
+            }else if (WIFSIGNALED(status)) {
+                printf("Background process with pid %d terminated with signal %d.\n", pid, WTERMSIG(status));
+            }
+        }
+    } while (pid > 0);
+    
 }
 
 
@@ -219,6 +271,6 @@ void printArgArray(char* array[], int narg) {
 }
 
 
-void ignoreSigint(int sig) {
-    printf(" Received signal %d (SIGINT). Ignoring...\n", sig);
+void receiveSignal(int sig) {
+    printf(" Received signal %d.\n", sig);
 }

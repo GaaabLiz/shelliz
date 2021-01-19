@@ -152,4 +152,22 @@ void runcommand(char **cline, processtype pt);
  * 
  * @param sig Intero che rappresenta il segnale.
  */
-void ignoreSigint(int sig);
+void receiveSignal(int sig);
+
+/**
+ * @brief Funzione da chiamare subito dopo aver aspettato
+ * il processo in foreground, in modo tale da stampare
+ * il valore di uscita del processo appena terminato.
+ * 
+ * @param wstatus Variabile che ho passato alla wait
+ * per memorizzare lo status di uscita.
+ */
+void checkForegroundStatus(int wstatus);
+
+/**
+ * @brief Funzione che controlla tramite un ciclo se 
+ * ci sono processi in background che hanno finito.
+ * Se ce ne sono la funziona stampa informazioni
+ * sulla loro terminazione.
+ */
+void checkbackgroundChild();
