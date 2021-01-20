@@ -1,4 +1,5 @@
 #include "smallsh.h"
+#include <string.h>
 
 /* Dichiarazione del buffer in cui verrà copiata la stringa digitata digitata
 dall'utente. */
@@ -88,6 +89,7 @@ int gettok(char **outptr)	{
     degli argomenti della exec.*/  
     *outptr = tok;
 
+
     /* Ciclo per ignorare eventuali spazi o tabulazioni contenuti inputbuf */
     if(DBG) printf("[GETTOK]: Start processing current symbol. ------------\n");
     while (*ptr == ' ' || *ptr == '\t') {
@@ -132,17 +134,38 @@ int gettok(char **outptr)	{
             while(inarg(*ptr)) {
                 if (DBG) printf("[GETTOK]: Copying current value of ptr ('%c') in tok.\n", *ptr);
                 *tok++ = *ptr++;
+                // *ccmd++ = *ptr++;
             }
         break;
     }
 
-  /* aggiunge \0 al fondo e restiuisce a procline il tipo di simbolo aggiunto in arg*/
-  if(DBG) printf("[GETTOK]: Add null char to tok.\n");
-  *tok++ = '\0';
-  if(DBG) printf("[GETTOK]: Returning to procline symbol %s.\n", convertTypeToString(type));
-  return(type);
+    /* aggiunge \0 al fondo */
+    if(DBG) printf("[GETTOK]: Add null char to tok.\n");
+    *tok++ = '\0';
+
+    /* Controllo se argomento controllato corrisponde a comando personalizzato */
+    if(checkIfCustom(tokbuf) == 1) {
+        if(DBG) printf("[GETTOK]: Actual argument is a special custom commands!\n");
+        type = CUSTOM;
+    }
+
+    /* Restituisco a procline il tipo di simbolo aggiunto in arg */ 
+    if(DBG) printf("[GETTOK]: Returning to procline symbol %s.\n", convertTypeToString(type));
+    return(type);
 
 }
+
+
+
+int checkIfCustom(char* str) {
+    const char *customCommands[] = {"bp"};
+
+    for (size_t i = 0; i < CUSTOM_COMMANDS_COUNT; i++){
+        if(strcmp(str, customCommands[i]) == 0) return 1;
+    }
+    return 0;
+}
+
 
 
 int inarg(char c){
@@ -178,6 +201,10 @@ char * convertTypeToString(int type) {
 
     case 4:
     return "SEMICOLON";
+    break;
+
+    case 5:
+    return "CUSTOM";
     break;
   
   default:

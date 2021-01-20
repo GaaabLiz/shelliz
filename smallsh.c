@@ -13,8 +13,18 @@ delle variabili d'ambiente dell'utente. Viene inizialmente settata a null
 in quanto verrà poi allocata nel main la memoria necessaria. */
 char *prompt = NULL;
 
+/* Stringa di buffer temporanea usata per memorizzare il valore attuale
+della variabile d'ambiente BPID. */
+char * bpidstr = NULL;
+
+/* Array d'appoggio usato per contenere tutti i pid dei processi in 
+background. Usato per gestire tutti i pid che poi verranno aggiunti/
+rimossi nella variabile d'ambiente BPID. */
+int pidbuffer[MAX_BG_CHILD];
+
 /* Tipologia del processo da eseguire in runcommand */
 processtype pt;
+
 
 
 /**
@@ -25,6 +35,9 @@ int main() {
 
     /* Allocazione di memoria per la stringa prompt. */
     prompt = (char*) malloc(PROMPT_MAX_SIZE);
+
+    /* Allocazione di memoria per la stringa d'appoggio a BPID */
+    bpidstr = (char*) malloc(MAX_BPID_SIZE);
 
     /* Caricamento delle variabili d'ambiente nel prompt. */
     if(loadEnv(prompt)) {
@@ -37,6 +50,17 @@ int main() {
         if(DBG) printf("[MAIN]: An error occurred while creating prompt's string.\n");
         if(DBG) printf("[MAIN]: Prompt set to '%s'.\n", prompt);
     }
+
+    /* Creazione della variabile d'ambiente BPID */
+    if(putenv("BPID=EMPTY") == 0) {
+        if(DBG) printf("[MAIN]: Enviroment variable BPID created succesfully!\n");
+    }else {
+        fprintf(stderr, "Some error occurred while creating BPID enviroment variable.");
+        perror("BPID");
+    }
+
+    /* Inizializzazione array d'appoggio dei pid (per BPID) */
+    for(int i = 0; i < MAX_BG_CHILD; i++) pidbuffer[i] = PID_EMPTY_SLOT;
 
     /* Definzione del ciclo infinito che gestisce la shell. Finche non viene
     rilevato un EOF oppure un segnale di terminazione viene continuamente 
@@ -109,6 +133,7 @@ void procline(void){
     del processamento della riga attuale. */
     narg=0;
 
+
     /* Ciclo che processa ogni singolo argomento da passare a runcommand */
     do {
 
@@ -153,6 +178,19 @@ void procline(void){
             } else {
                 if(DBG) printf("[PROCLINE]: Toktype is EOF. Processing of current input string is over.\n");
             } 
+            break;
+
+            /* Se gettok restituisce un CUSTOM vuoldire che l'argomento attuale
+            (che è stato cmq inserito in arg) è un argomento che corrisponde
+            a un comando personalizzato. */
+            case CUSTOM:
+                if(narg == 0) {
+                    if(DBG) printArgArray(arg, narg);
+                    executeCustomCommand(arg[0]);
+                    toktype = 1;
+                } else {
+                    if (narg < MAXARG) narg++;
+                }
             break;
         }
     } while (toktype != EOL);  /* fine riga, procline finita */
@@ -206,8 +244,9 @@ void runcommand(char **cline, processtype pt){
             sigaction(SIGINT,&saf,NULL);
 
             /* Aspetta il figlio appena creato e stampa info sulla terminazione*/
-            ret = waitpid(pid, &exitstat, 0);
-            if(DBG) printf("[RUNCOMMAND]: foreground process terminated with returned value = %d\n", ret);
+            ret = waitpid(pid, &exitstat, WUNTRACED);
+            if(!DBG) printf("[RUNCOMMAND]: foreground process terminated with returned value = %d\n", ret);
+            if(!DBG) printf("[RUNCOMMAND]: status of waitpid = %d\n", exitstat);
             if (ret == -1) perror("waitpid");
             checkForegroundStatus(exitstat);
             break;
@@ -230,6 +269,20 @@ void runcommand(char **cline, processtype pt){
 }
 
 
+void executeCustomCommand(char * commandName) {
+  
+    /* COMANDO PERSONALIZZATO BP */
+    if(strcmp(commandName, "bp") == 0) {
+        fprintf(stdout, "BPID=%s\n", getenv("BPID"));
+        if(DBG) printf("[PROCLINE]: Executed 'bp' custom command!\n");
+    } 
+    /* ERRORE */
+    else {
+        if(DBG) printf("[PROCLINE]: Error! Unknown custom command!\n");
+    } 
+}
+
+
 void checkForegroundStatus(int wstatus) {
     if(WIFEXITED(wstatus)) {
         printf("Exit value: %d\n", WEXITSTATUS(wstatus));
@@ -237,6 +290,7 @@ void checkForegroundStatus(int wstatus) {
         printf("Interrupted by signal: %d\n", WTERMSIG(wstatus));
     }
 }
+
 
 
 void checkbackgroundChild() {
@@ -259,6 +313,10 @@ void checkbackgroundChild() {
     } while (pid > 0);
     
 }
+
+
+
+
 
 
 void printArgArray(char* array[], int narg) {

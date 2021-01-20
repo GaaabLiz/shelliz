@@ -6,7 +6,7 @@
 * Costante usata per abilitare la stampa di tutto il codice usato per debuggare.
 * 0 -> nascondi tutte le stampe;
 * 1 -> mostra tutte le stampe. */
-#define DBG 0
+#define DBG 1
 
 
 /* ■
@@ -28,6 +28,7 @@
 #define ARG 2		    // Simbolo: "Argument" 
 #define AMPERSAND 3 	// Simbolo: "&" 
 #define SEMICOLON 4	    // Simbolo: ";" 
+#define CUSTOM 5        // Comando personalizzato
 
 
 /* ■
@@ -41,11 +42,36 @@
 
 
 /* ■
+* Definizione del numero massimo processi in background. Usato per gestire
+* l'array di pid che popolerà la variabile d'ambiente BPID. */
+#define MAX_BG_CHILD 1024
+
+
+/* ■
+* Definizione del numero intero usato per indicare uno slot vuoto 
+* nell'array d'appoggio per BPID. */
+#define PID_EMPTY_SLOT -1
+
+
+/* ■
+* Dimensione della stringa d'appoggio usata per memorizzare la
+* variabile d'ambiente BPID. */
+#define MAX_BPID_SIZE 4096
+
+
+/* ■
 * Definizione della variabile 'processtype' usata per distinguere la
 * tipologia di processo che la runcommand dovrà chiamare. */
 typedef int processtype;
 #define PROCESS_FOREGROUND 1
 #define PROCESS_BACKGROUND -1
+
+
+/* ■
+* Definizione del numero attuale di comandi personalizzati
+* presenti nella shell. Usato per scorrere l'array 
+* customCommands[]. */
+#define CUSTOM_COMMANDS_COUNT 1
 
 
 
@@ -171,3 +197,64 @@ void checkForegroundStatus(int wstatus);
  * sulla loro terminazione.
  */
 void checkbackgroundChild();
+
+/**
+ * @brief Aggiunge un pid alla variabile d'ambiente BPID
+ * 
+ * @param pid il pid da aggiungere 
+ * @return int Restituisce 1 se l'aggiunta è andata a buon fine.
+ * Restituisce -1 se si è verificato un errore.
+ */
+int addPidToBPID(int pid);
+
+/**
+ * @brief Rimuovi un pid dalla variabile d'ambiente BPID
+ * 
+ * @param pid il pid da rimuovere
+ * @return int Restituisce 1 se il pid è stato rimosso. 
+ * Restituisce -1 se si è verificato un errore (come pid non trovato).
+ * Restituisce 0 se la variabile d'ambiente non ha nessun pid.
+ */
+int removePidToBPID(int pid);
+
+/**
+ * @brief Funzione che conta il numero di pid presenti nella variabile
+ * d'ambiente (quindi in pratica conta il numero di processi in background)
+ * 
+ * @return int Il numero di pid nella variabile.
+ */
+int getBpidSize();
+
+/**
+ * @brief Cerca un pid all'interno della variabile BPID
+ * 
+ * @param pid Il pid da cercare
+ * @return int Restituisce 1 se il pid cercato è presente.
+ * Restituisce 0 se il pid cercato non è presente.
+ */
+int searchPidonBPID(int pid);
+
+/**
+ * @brief Stampa in stdout la variabile d'ambiente BPID
+ * 
+ * @return int 1 se la stampa ha successo, -1 se si è verificato un errore.
+ */
+int printBPID();
+
+/**
+ * @brief Funzione che controlla se un argomento che gettok ha
+ * elaborato corrisponde a un comando personalizzato
+ * 
+ * @param str La stringa da controllare
+ * @return int Restituisce 1 se la stringa in input corrisponde
+ * a un comando personalizzato, 0 altrimenti.
+ */
+int checkIfCustom(char* str);
+
+/**
+ * @brief Esegue operazioni specifiche in base al nome del
+ * comando personalizzato passato come argomento.
+ * 
+ * @param commandName La stringa che rappresenta il nome del comando
+ */
+void executeCustomCommand(char * commandName);
