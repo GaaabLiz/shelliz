@@ -39,6 +39,16 @@ int main() {
     /* Allocazione di memoria per la stringa d'appoggio a BPID */
     bpidstr = (char*) malloc(MAX_BPID_SIZE);
 
+    /* Ridefinizione del segnale SIGINT per la shell. Essendo un ciclo
+    infinito questo programma, per terminare il tutto devo inviare un SIGINT
+    (quando non sta facendo un foreground). Avendo usato diverse malloc,
+    prima di uscire dalla shell devo deallocare la memoria. */
+    struct sigaction safree;
+    safree.sa_handler = deallocateOnSignal;
+    sigemptyset(&safree.sa_mask);
+    safree.sa_flags = 0;
+    sigaction(SIGINT,&safree,NULL);
+
     /* Caricamento delle variabili d'ambiente nel prompt. */
     if(loadEnv(prompt)) {
         if(DBG) printf("[MAIN]: Enviroment variable succesfully loaded into prompt's string.\n");
@@ -230,6 +240,7 @@ void runcommand(char **cline, processtype pt){
 
         case PROCESS_BACKGROUND:
             printf("Process '%s' open on background with pid %d.\n", *cline, (int)pid);
+            if(addPidToBPID((int)pid) == -1) fprintf(stderr, "Error occurred while adding pid into BPID\n");
             break;
 
         case PROCESS_FOREGROUND:
@@ -259,13 +270,22 @@ void runcommand(char **cline, processtype pt){
 
         /* Ripristino il funzionamento del segnale di interruzzione, in quanto
         è possibile, come nel caso del foregound, che è stato ridefinito. */
-        struct sigaction sa;
-        sa.sa_handler = SIG_DFL;
-        sigemptyset(&sa.sa_mask);
-        sa.sa_flags = 0;
-        sigaction(SIGINT,&sa,NULL);
+        struct sigaction safree;
+        safree.sa_handler = deallocateOnSignal;
+        sigemptyset(&safree.sa_mask);
+        safree.sa_flags = 0;
+        sigaction(SIGINT,&safree,NULL);
     }
 
+}
+
+
+
+void deallocateOnSignal(int sig) {
+    free(prompt);
+    free(bpidstr);
+    fprintf(stdout, "\nShell received signal %d!. Closing...\n", sig);
+    exit(EXIT_SUCCESS);
 }
 
 
@@ -285,7 +305,7 @@ void executeCustomCommand(char * commandName) {
 
 void checkForegroundStatus(int wstatus) {
     if(WIFEXITED(wstatus)) {
-        printf("Exit value: %d\n", WEXITSTATUS(wstatus));
+        printf("Exit value: %d\n\n", WEXITSTATUS(wstatus));
     } else if (WIFSIGNALED(wstatus)){
         printf("Interrupted by signal: %d\n", WTERMSIG(wstatus));
     }
@@ -309,9 +329,151 @@ void checkbackgroundChild() {
             }else if (WIFSIGNALED(status)) {
                 printf("Background process with pid %d terminated with signal %d.\n", pid, WTERMSIG(status));
             }
+            if(removePidToBPID((int)pid) == -1) fprintf(stderr, "Error occurred while removing pid from BPID\n");
         }
     } while (pid > 0);
     
+}
+
+
+
+int addPidToBPID(int pid) {
+    /* Prima di aggiungere un pid cerco se esiste già. In tal caso 
+    lancio errore. */
+    if(searchPidonBPID(pid) == 1) {
+        if(DBG) printf("[BPID]: Error! pid %d can't be added because is already present!", pid);
+        return -1;
+    }
+    /* Se tutto va bene inserisco nel vettore il pid */
+    else {
+        /* Prendo dim attuale per successivo confronto */
+        int countBefore = getBpidSize();    
+
+        /* Se non ce un posto libero (quindi vettore pieno) ritorno errore */
+        int emptyCount = 0;
+        for (size_t i = 0; i < MAX_BG_CHILD; i++){
+            if(pidbuffer[i] == PID_EMPTY_SLOT) {
+                emptyCount++;
+            }
+        }
+        if(emptyCount == 0) {
+            if(DBG) printf("[BPID]: Error! Pid can't be added! buffer is full!\n");
+            return -1;
+        }
+        
+        /* Prendo il primo posto libero nel vettore e gli metto il pid */
+        for (size_t i = 0; i < MAX_BG_CHILD; i++){
+            if(pidbuffer[i] == PID_EMPTY_SLOT) {
+                pidbuffer[i] = pid;
+                if(DBG) printf("[BPID]: added pid %d on position %d inside buffer.\n", pid, (int)i);
+                break;
+            }
+        }
+
+        /* Aggiorna la variabile d'ambiente con i valori dell'array */
+        int countAfter = getBpidSize();
+        if(updateBPID() && (countAfter == (countBefore+1))) {
+            return 1;
+        }else {
+            return -1;
+        }
+
+    }
+}
+
+
+int removePidToBPID(int pid) {
+    
+    /* Controllo dimensione != 0 */
+    if(getBpidSize() == 0) return 0;
+
+    /* Controllo se presente */
+    if(searchPidonBPID(pid) == 0) return -1;
+
+    /* Prendo dimensione attuale */
+    int countBefore = getBpidSize();
+
+    /* Tentativo rimozione */
+    for (size_t i = 0; i < MAX_BG_CHILD; i++){
+        if(pidbuffer[i] == pid) {
+            pidbuffer[i] = PID_EMPTY_SLOT;
+            int countAfter = getBpidSize();
+            if(updateBPID() && (countAfter == (countBefore-1))) {
+                if(DBG) printf("[BPID]: pid %d removed from the buffer and env updated!.\n", pid);
+                return 1;
+            }else {
+                if(DBG) printf("[BPID]: Some error occurred while updating and deleting pid %d.\n", pid);
+                return -1;
+            }
+        }
+    }
+    return -1;
+    
+}
+
+
+
+
+
+int updateBPID() {
+    
+    /* per prima cosa setto subito la variabile BPID a EMPTY, se poi ci sono
+    pid nel vettore allora poi inserisco la stringa d'appoggio */
+    if(putenv("BPID=EMPTY") == 0) { 
+        if(getBpidSize() == 0) {    // NOn ci sono pid. HO finito
+            if(DBG) printf("[BPID]: Updated to empty\n");
+        }else {
+
+            /* Libero la memoria della precedente stringa d'appoggio */
+            free(bpidstr);
+
+            /* Alloco nuova memoria per contenere nuova stringa d'appoggio */
+            bpidstr = malloc(MAX_BPID_SIZE);
+
+            /* Avendo allocato nuova memoria devo riscrivere a che variabile
+            d'ambiente mi riferisco */
+            strcpy(bpidstr, "BPID=");
+
+            /* Prendo tutti i pid nel vettore d'appoggio e gli concateno
+            uno ad uno alla stringa. */
+            for (size_t i = 0; i < MAX_BG_CHILD; i++){
+                char bfint[MAX_PID_CHARINT_SIZE];
+                if(pidbuffer[i] != -1) {
+                    if(i != 0) strcat(bpidstr, ":");
+                    sprintf(bfint, "%d", pidbuffer[i]);
+                    strcat(bpidstr, bfint);
+                }
+            }
+
+            /* Setto la stringa d'appoggio come variabile d'ambiente BPID.
+            Controllo eventuale errore */
+            if(putenv(bpidstr) != 0) perror("bpid");
+        }
+        if(DBG) printf("[MAIN]: Enviroment variable BPID updated succesfully!\n");
+        return 1;
+    }else {
+        fprintf(stderr, "Some error occurred while updating BPID enviroment variable.");
+        perror("BPID");
+        return -1;
+    }
+}
+
+
+
+int searchPidonBPID(int pid) {
+    for (size_t i = 0; i < MAX_BG_CHILD; i++){
+        if(pidbuffer[i] == pid) return 1;
+    }
+    return 0;
+}
+
+
+int getBpidSize() {
+    int count = 0;
+    for (size_t i = 0; i < MAX_BG_CHILD; i++){
+        if(pidbuffer[i] != PID_EMPTY_SLOT) count++;
+    }
+    return count;
 }
 
 

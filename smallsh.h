@@ -6,7 +6,7 @@
 * Costante usata per abilitare la stampa di tutto il codice usato per debuggare.
 * 0 -> nascondi tutte le stampe;
 * 1 -> mostra tutte le stampe. */
-#define DBG 1
+#define DBG 0
 
 
 /* ■
@@ -57,6 +57,16 @@
 * Dimensione della stringa d'appoggio usata per memorizzare la
 * variabile d'ambiente BPID. */
 #define MAX_BPID_SIZE 4096
+
+
+/* ■
+* Definizione del numero massimo di cifre che un pid può avere
+* sottoforma di stringa. Essendo un pid di tipo PID_T, che in realtà
+* è un intero, uso il numero massimo di cifre che un int ha.
+* Questo valore è usato per costruire un vettore d'appoggio che
+* verrà usato per convertire un pid (preso dal vettore) da intero
+* a stringa. */
+#define MAX_PID_CHARINT_SIZE 8
 
 
 /* ■
@@ -235,11 +245,14 @@ int getBpidSize();
 int searchPidonBPID(int pid);
 
 /**
- * @brief Stampa in stdout la variabile d'ambiente BPID
+ * @brief Aggiorna la stringa d'appoggio per la variabile BPID in
+ * modo che contenga tutto il contenuto che deve essere settato
+ * tramite la setenv(). Una volta riempita la stringa con tutti i
+ * pid viene chiamata la setenv per aggiornare BPID.
  * 
- * @return int 1 se la stampa ha successo, -1 se si è verificato un errore.
+ * @return int Restituisce 1 se tutto va a buon fine, -1 altrimenti
  */
-int printBPID();
+int updateBPID();
 
 /**
  * @brief Funzione che controlla se un argomento che gettok ha
@@ -258,3 +271,13 @@ int checkIfCustom(char* str);
  * @param commandName La stringa che rappresenta il nome del comando
  */
 void executeCustomCommand(char * commandName);
+
+/**
+ * @brief Funzione che viene chiamata quando l'interprete non sta
+ * eseguendo un processo in foreground e viene terminato con un 
+ * segnale di terminazione. QUello che fa è liberare la memoria
+ * allocata per la stringa prompt e la stringa strbpid.
+ * 
+ * @param sig Il segnale ricevuto
+ */
+void deallocateOnSignal(int sig);
