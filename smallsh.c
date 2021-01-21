@@ -26,6 +26,12 @@ int pidbuffer[MAX_BG_CHILD];
 processtype pt;
 
 
+void exitChild(int sig) {
+    printf("asdasda\n");
+    fflush(stdout);
+    exit(EXIT_SUCCESS);
+}
+
 
 /**
  * @brief Main del programma. 
@@ -47,7 +53,7 @@ int main() {
     safree.sa_handler = deallocateOnSignal;
     sigemptyset(&safree.sa_mask);
     safree.sa_flags = 0;
-    sigaction(SIGINT,&safree,NULL);
+    sigaction(SIGINT,&safree,NULL); 
 
     /* Caricamento delle variabili d'ambiente nel prompt. */
     if(loadEnv(prompt)) {
@@ -79,6 +85,10 @@ int main() {
     che ha scritto l'utente. */
     while(userin(prompt) != EOF) procline();
     
+    /* Deallocazione memoria nel caso si arrivi qui */
+    free(prompt);
+    free(bpidstr);
+
     return EXIT_SUCCESS;
 }
 
@@ -221,7 +231,7 @@ void runcommand(char **cline, processtype pt){
 
     /* Processo figlio */
     if (pid == (pid_t) 0) { 
-        
+       
         /* esegue il comando il cui nome e' il primo elemento di cline,passando 
         cline come vettore di argomenti */
         execvp(*cline,cline);
@@ -301,7 +311,7 @@ void executeCustomCommand(char * commandName) {
 void checkForegroundStatus(int wstatus) {
     if(WIFEXITED(wstatus)) {
         printf("Exit value: %d\n\n", WEXITSTATUS(wstatus));
-    } else if (WIFSIGNALED(wstatus)){
+    } else if (WIFSIGNALED(wstatus) != 0){
         printf("Interrupted by signal: %d\n", WTERMSIG(wstatus));
     }
 }
@@ -320,7 +330,7 @@ void checkbackgroundChild() {
         pid = waitpid(-1, &status, WNOHANG);
         if(pid > 0) { /* necessario per capire se pid o altro */
             if(WIFEXITED(status)) {
-                printf("Background process with pid %d terminated with exit value %d.\n", pid, WEXITSTATUS(status));
+                printf("Process with pid %d terminated with exit value %d.\n", pid, WEXITSTATUS(status));
             }else if (WIFSIGNALED(status)) {
                 printf("Background process with pid %d terminated with signal %d.\n", pid, WTERMSIG(status));
             }
@@ -487,7 +497,7 @@ void printArgArray(char* array[], int narg) {
 
 
 void receiveSignal(int sig) {
-    printf(" Received signal %d.\n", sig);
+    if (DBG) printf("\nShell Received signal %d.\n", sig);
 }
 
 void deallocateOnSignal(int sig) {
