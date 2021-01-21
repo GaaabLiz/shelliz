@@ -281,12 +281,7 @@ void runcommand(char **cline, processtype pt){
 
 
 
-void deallocateOnSignal(int sig) {
-    free(prompt);
-    free(bpidstr);
-    fprintf(stdout, "\nShell received signal %d!. Closing...\n", sig);
-    exit(EXIT_SUCCESS);
-}
+
 
 
 void executeCustomCommand(char * commandName) {
@@ -493,4 +488,11 @@ void printArgArray(char* array[], int narg) {
 
 void receiveSignal(int sig) {
     printf(" Received signal %d.\n", sig);
+}
+
+void deallocateOnSignal(int sig) {
+    free(prompt);
+    free(bpidstr);
+    fprintf(stdout, "\nShell received signal %d!. Closing...\n", sig);
+    exit(EXIT_SUCCESS);
 }
