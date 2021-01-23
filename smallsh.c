@@ -25,12 +25,12 @@ int pidbuffer[MAX_BG_CHILD];
 /* Tipologia del processo da eseguire in runcommand */
 processtype pt;
 
+/* Pid del processo in foreground che deve essere terminato 
+con un segnale */
+pid_t tempPid = 0;
 
-void exitChild(int sig) {
-    printf("asdasda\n");
-    fflush(stdout);
-    exit(EXIT_SUCCESS);
-}
+
+
 
 
 /**
@@ -229,64 +229,62 @@ void runcommand(char **cline, processtype pt){
         return;
     }
 
-    /* Processo figlio */
+    /* PROCESSO FIGLIO -----*/
     if (pid == (pid_t) 0) { 
-       
         /* esegue il comando il cui nome e' il primo elemento di cline,passando 
         cline come vettore di argomenti */
         execvp(*cline,cline);
         perror(*cline);
         exit(EXIT_FAILURE);
-
     }
-    /* Processo padre */
-    else { 
-
-        /* Controlla la terminazione di tutti i processi in background e li segnala */
-        checkbackgroundChild();
-        
-        /* Il base al tipo di processo avviato eseguo una determinata azione */
-        switch (pt){
-
-        case PROCESS_BACKGROUND:
-            printf("Process '%s' open on background with pid %d.\n", *cline, (int)pid);
-            if(addPidToBPID((int)pid) == -1) fprintf(stderr, "Error occurred while adding pid into BPID\n");
-            break;
-
-        case PROCESS_FOREGROUND:
-            printf("Process '%s' open on foreground with pid %d.\n", *cline, (int)pid);
-
-            /* Quando il processo è in foreground, l'interprete deve
-            ignorare il segnale di interruzzione. */
-            struct sigaction saf;
-            saf.sa_handler = receiveSignal;
-            sigemptyset(&saf.sa_mask);
-            saf.sa_flags = 0;
-            sigaction(SIGINT,&saf,NULL);
-
-            /* Aspetta il figlio appena creato e stampa info sulla terminazione*/
-            ret = waitpid(pid, &exitstat, WUNTRACED);
-            if(!DBG) printf("[RUNCOMMAND]: foreground process terminated with returned value = %d\n", ret);
-            if(!DBG) printf("[RUNCOMMAND]: status of waitpid = %d\n", exitstat);
-            if (ret == -1) perror("waitpid");
-            checkForegroundStatus(exitstat);
-            break;
-        
-        default:
-            fprintf(stderr, "Some error occurred while checking process type.\n");
-            break;
-        }
 
 
-        /* Ripristino il funzionamento del segnale di interruzzione, in quanto
-        è possibile, come nel caso del foregound, che è stato ridefinito. */
+    /* PROCESSO PADRE ------*/
+
+    /* Controlla la terminazione di tutti i processi in background e li segnala */
+    checkbackgroundChild();
+
+
+    /* Il base al tipo di processo avviato eseguo una determinata azione */
+    switch (pt){
+
+    case PROCESS_BACKGROUND:
+        printf("Process '%s' open on background with pid %d.\n", *cline, (int)pid);
+        if(addPidToBPID((int)pid) == -1) fprintf(stderr, "Error occurred while adding pid into BPID\n");
+
         struct sigaction safree;
         safree.sa_handler = deallocateOnSignal;
         sigemptyset(&safree.sa_mask);
         safree.sa_flags = 0;
-        sigaction(SIGINT,&safree,NULL);
+        sigaction(SIGINT,&safree,NULL); 
+        break;
+
+    case PROCESS_FOREGROUND:
+        printf("Process '%s' open on foreground with pid %d.\n", *cline, (int)pid);
+
+        /* Quando il processo è in foreground, l'interprete deve
+        ignorare il segnale di interruzzione. Ma il figlio (che è in foreground)
+        deve terminare! */
+        struct sigaction saf;
+        saf.sa_handler = receiveSignal;
+        sigemptyset(&saf.sa_mask);
+        saf.sa_flags = 0;
+        sigaction(SIGINT,&saf,NULL);
+
+        /* Aspetta il figlio appena creato e stampa info sulla terminazione*/
+        ret = waitpid(pid, &exitstat, 0);
+        if(DBG) printf("[RUNCOMMAND]: foreground process terminated with returned value = %d\n", ret);
+        if(DBG) printf("[RUNCOMMAND]: status of waitpid = %d\n", exitstat);
+        
+        break;
+    
+    default:
+        fprintf(stderr, "Some error occurred while checking process type.\n");
+        break;
     }
 
+    if (ret == -1) perror("waitpid");
+    checkForegroundStatus(exitstat);
 }
 
 
@@ -295,13 +293,17 @@ void runcommand(char **cline, processtype pt){
 
 
 void executeCustomCommand(char * commandName) {
+
+    /* Controlla la terminazione di tutti i processi in background e li segnala.
+    Questo è necessario ripeterlo qua perchè era presente solo in runccomand. */
+    checkbackgroundChild();
   
-    /* COMANDO PERSONALIZZATO BP */
+    /* Comando bp */
     if(strcmp(commandName, "bp") == 0) {
         fprintf(stdout, "BPID=%s\n", getenv("BPID"));
         if(DBG) printf("[PROCLINE]: Executed 'bp' custom command!\n");
     } 
-    /* ERRORE */
+    /* errore */
     else {
         if(DBG) printf("[PROCLINE]: Error! Unknown custom command!\n");
     } 
@@ -332,7 +334,7 @@ void checkbackgroundChild() {
             if(WIFEXITED(status)) {
                 printf("Process with pid %d terminated with exit value %d.\n", pid, WEXITSTATUS(status));
             }else if (WIFSIGNALED(status)) {
-                printf("Background process with pid %d terminated with signal %d.\n", pid, WTERMSIG(status));
+                printf("Process with pid %d terminated with signal %d.\n", pid, WTERMSIG(status));
             }
             if(removePidToBPID((int)pid) == -1) fprintf(stderr, "Error occurred while removing pid from BPID\n");
         }
@@ -497,12 +499,27 @@ void printArgArray(char* array[], int narg) {
 
 
 void receiveSignal(int sig) {
+    /* Segnalo arrivo segnale */
     if (DBG) printf("\nShell Received signal %d.\n", sig);
+
+    if (sig == SIGINT) {
+        //if (DBG) printf("Sto per uccidere pid %d.\n", tempPid);
+        //kill(tempPid, SIGINT);
+        //tempPid = 0;
+    }
+    
+    /* Ridefinisco comportamento default SIGINT padre */
+    struct sigaction safree;
+    safree.sa_handler = deallocateOnSignal;
+    sigemptyset(&safree.sa_mask);
+    safree.sa_flags = 0;
+    sigaction(SIGINT,&safree,NULL);
 }
 
 void deallocateOnSignal(int sig) {
     free(prompt);
     free(bpidstr);
-    fprintf(stdout, "\nShell received signal %d!. Closing...\n", sig);
+    //if(DBG) printf("Entering on SIGINT redefined with signal %d\n", sig);
+    fprintf(stdout, "\nClosing shell...\n");
     exit(EXIT_SUCCESS);
 }
