@@ -29,6 +29,10 @@ processtype pt;
 con un segnale */
 pid_t tempPid = 0;
 
+/* Definizione di tutti gli handler dei segnali */
+struct sigaction safree;    // Handler per deallocare la memoria
+struct sigaction safign;    // Handler per processo padre in caso di figlio fg
+
 
 
 
@@ -45,15 +49,20 @@ int main() {
     /* Allocazione di memoria per la stringa d'appoggio a BPID */
     bpidstr = (char*) malloc(MAX_BPID_SIZE);
 
+    /* Creazione degli handler personalizzati */
+    safree.sa_handler = deallocateOnSignal;
+    sigemptyset(&safree.sa_mask);
+    safree.sa_flags = 0;
+    safign.sa_handler = receiveSignal;
+    sigemptyset(&safign.sa_mask);
+    safign.sa_flags = 0;
+
+
     /* Ridefinizione del segnale SIGINT per la shell. Essendo un ciclo
     infinito questo programma, per terminare il tutto devo inviare un SIGINT
     (quando non sta facendo un foreground). Avendo usato diverse malloc,
     prima di uscire dalla shell devo deallocare la memoria. */
-    struct sigaction safree;
-    safree.sa_handler = deallocateOnSignal;
-    sigemptyset(&safree.sa_mask);
-    safree.sa_flags = 0;
-    sigaction(SIGINT,&safree,NULL); 
+    sigaction(SIGINT, &safree, NULL); 
 
     /* Caricamento delle variabili d'ambiente nel prompt. */
     if(loadEnv(prompt)) {
@@ -63,7 +72,7 @@ int main() {
         if(DBG) printf("[MAIN]: prompt's string exceeds PROMPT_MAX_SIZE (%d).\n", PROMPT_MAX_SIZE);
         if(DBG) printf("[MAIN]: Prompt set to '%s'.\n", prompt);
     }else {
-        if(DBG) printf("[MAIN]: An error occurred while creating prompt's string.\n");
+        fprintf(stderr, "An error occurred while creating prompt's string from enviroment variables.\n");
         if(DBG) printf("[MAIN]: Prompt set to '%s'.\n", prompt);
     }
 
@@ -185,8 +194,6 @@ void procline(void){
                 arg[narg] = NULL;
                 if(DBG) printArgArray(arg, narg);
                 runcommand(arg, pt);
-            }else {
-                //fprintf(stderr, "Some error occurred with the number of argument to pass at exec.");
             }
             
             /* Se fine riga (toktype = EOF) si esce dal ciclo e la procline è terminata.
@@ -207,7 +214,7 @@ void procline(void){
                 if(narg == 0) {
                     if(DBG) printArgArray(arg, narg);
                     executeCustomCommand(arg[0]);
-                    toktype = 1;
+                    toktype = EOL;
                 } else {
                     if (narg < MAXARG) narg++;
                 }
@@ -216,6 +223,8 @@ void procline(void){
     } while (toktype != EOL);  /* fine riga, procline finita */
 
 }
+
+
 
 
 void runcommand(char **cline, processtype pt){
@@ -244,19 +253,13 @@ void runcommand(char **cline, processtype pt){
     /* Controlla la terminazione di tutti i processi in background e li segnala */
     checkbackgroundChild();
 
-
     /* Il base al tipo di processo avviato eseguo una determinata azione */
     switch (pt){
 
     case PROCESS_BACKGROUND:
         printf("Process '%s' open on background with pid %d.\n", *cline, (int)pid);
         if(addPidToBPID((int)pid) == -1) fprintf(stderr, "Error occurred while adding pid into BPID\n");
-
-        struct sigaction safree;
-        safree.sa_handler = deallocateOnSignal;
-        sigemptyset(&safree.sa_mask);
-        safree.sa_flags = 0;
-        sigaction(SIGINT,&safree,NULL); 
+        sigaction(SIGINT, &safree, NULL); 
         break;
 
     case PROCESS_FOREGROUND:
@@ -265,16 +268,18 @@ void runcommand(char **cline, processtype pt){
         /* Quando il processo è in foreground, l'interprete deve
         ignorare il segnale di interruzzione. Ma il figlio (che è in foreground)
         deve terminare! */
-        struct sigaction saf;
-        saf.sa_handler = receiveSignal;
-        sigemptyset(&saf.sa_mask);
-        saf.sa_flags = 0;
-        sigaction(SIGINT,&saf,NULL);
+        sigaction(SIGINT, &safign, NULL);
 
         /* Aspetta il figlio appena creato e stampa info sulla terminazione*/
         ret = waitpid(pid, &exitstat, 0);
         if(DBG) printf("[RUNCOMMAND]: foreground process terminated with returned value = %d\n", ret);
         if(DBG) printf("[RUNCOMMAND]: status of waitpid = %d\n", exitstat);
+        if (ret == -1) {
+            //perror("waitpid");
+            printf("\nForeground process interrupted by signal.\n\n");
+        }else {
+            checkForegroundStatus(exitstat);
+        }
         
         break;
     
@@ -282,12 +287,8 @@ void runcommand(char **cline, processtype pt){
         fprintf(stderr, "Some error occurred while checking process type.\n");
         break;
     }
-
-    if (ret == -1) perror("waitpid");
-    checkForegroundStatus(exitstat);
+    
 }
-
-
 
 
 
@@ -300,7 +301,7 @@ void executeCustomCommand(char * commandName) {
   
     /* Comando bp */
     if(strcmp(commandName, "bp") == 0) {
-        fprintf(stdout, "BPID=%s\n", getenv("BPID"));
+        fprintf(stdout, "BPID=%s\n\n", getenv("BPID"));
         if(DBG) printf("[PROCLINE]: Executed 'bp' custom command!\n");
     } 
     /* errore */
@@ -310,13 +311,14 @@ void executeCustomCommand(char * commandName) {
 }
 
 
+
+
 void checkForegroundStatus(int wstatus) {
     if(WIFEXITED(wstatus)) {
         printf("Exit value: %d\n\n", WEXITSTATUS(wstatus));
-    } else if (WIFSIGNALED(wstatus) != 0){
-        printf("Interrupted by signal: %d\n", WTERMSIG(wstatus));
-    }
+    } 
 }
+
 
 
 
@@ -338,9 +340,9 @@ void checkbackgroundChild() {
             }
             if(removePidToBPID((int)pid) == -1) fprintf(stderr, "Error occurred while removing pid from BPID\n");
         }
-    } while (pid > 0);
-    
+    } while (pid > 0);    
 }
+
 
 
 
@@ -389,6 +391,8 @@ int addPidToBPID(int pid) {
 }
 
 
+
+
 int removePidToBPID(int pid) {
     
     /* Controllo dimensione != 0 */
@@ -417,7 +421,6 @@ int removePidToBPID(int pid) {
     return -1;
     
 }
-
 
 
 
@@ -467,12 +470,15 @@ int updateBPID() {
 
 
 
+
 int searchPidonBPID(int pid) {
     for (size_t i = 0; i < MAX_BG_CHILD; i++){
         if(pidbuffer[i] == pid) return 1;
     }
     return 0;
 }
+
+
 
 
 int getBpidSize() {
@@ -482,8 +488,6 @@ int getBpidSize() {
     }
     return count;
 }
-
-
 
 
 
@@ -498,28 +502,23 @@ void printArgArray(char* array[], int narg) {
 }
 
 
+
+
 void receiveSignal(int sig) {
     /* Segnalo arrivo segnale */
     if (DBG) printf("\nShell Received signal %d.\n", sig);
-
-    if (sig == SIGINT) {
-        //if (DBG) printf("Sto per uccidere pid %d.\n", tempPid);
-        //kill(tempPid, SIGINT);
-        //tempPid = 0;
-    }
     
     /* Ridefinisco comportamento default SIGINT padre */
-    struct sigaction safree;
-    safree.sa_handler = deallocateOnSignal;
-    sigemptyset(&safree.sa_mask);
-    safree.sa_flags = 0;
     sigaction(SIGINT,&safree,NULL);
 }
+
+
+
 
 void deallocateOnSignal(int sig) {
     free(prompt);
     free(bpidstr);
-    //if(DBG) printf("Entering on SIGINT redefined with signal %d\n", sig);
+    if(DBG) printf("Shell received signal %d.\n", sig);
     fprintf(stdout, "\nClosing shell...\n");
     exit(EXIT_SUCCESS);
 }
