@@ -25,10 +25,6 @@ int pidbuffer[MAX_BG_CHILD];
 /* Tipologia del processo da eseguire in runcommand */
 processtype pt;
 
-/* Pid del processo in foreground che deve essere terminato 
-con un segnale */
-pid_t tempPid = 0;
-
 /* Definizione di tutti gli handler dei segnali */
 struct sigaction safree;    // Handler per deallocare la memoria
 struct sigaction safign;    // Handler per processo padre in caso di figlio fg
@@ -50,10 +46,10 @@ int main() {
     bpidstr = (char*) malloc(MAX_BPID_SIZE);
 
     /* Creazione degli handler personalizzati */
-    safree.sa_handler = deallocateOnSignal;
+    safree.sa_handler = deallocateOnSignal; // SIGINT no fg
     sigemptyset(&safree.sa_mask);
     safree.sa_flags = 0;
-    safign.sa_handler = receiveSignal;
+    safign.sa_handler = receiveSignal;      // SIGINT fg
     sigemptyset(&safign.sa_mask);
     safign.sa_flags = 0;
 
@@ -146,7 +142,6 @@ int loadEnv(char * prompt) {
     }
     
     return returnStatus;
-    
 }
 
 
